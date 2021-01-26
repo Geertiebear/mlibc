@@ -10,7 +10,12 @@ namespace {
 	constexpr unsigned int tcbCancelAsyncBit = 1 << 1;
 	// Set when the thread has been cancelled
 	constexpr unsigned int tcbCancelTriggerBit = 1 << 2;
-
+	// Set when the thread is in the process of being cancelled.
+	constexpr unsigned int tcbCancelingBit = 1 << 3;
+	// Set when the thread is exiting.
+	constexpr unsigned int tcbExitingBit = 1 << 4;
+	// Set when the thread has exited.
+	constexpr unsigned int tcbExitedBit = 1 << 5;
 }
 
 namespace mlibc {
@@ -20,6 +25,12 @@ namespace mlibc {
 		return (value & (tcbCancelEnableBit | tcbCancelAsyncBit
 				| tcbCancelTriggerBit)) == (tcbCancelEnableBit
 					| tcbCancelAsyncBit | tcbCancelTriggerBit);
+	}
+
+	// Returns true when bitmask indicates async cancellation is enabled.
+	static constexpr bool tcb_async_cancel(int value) {
+		return (value & (tcbCancelEnableBit | tcbCancelAsyncBit))
+			== (tcbCancelEnableBit | tcbCancelAsyncBit);
 	}
 }
 
