@@ -45,6 +45,78 @@ jobs:
             run: 'xbstrap install-tool gcc'
             working-directory: build/
 
+
+    test-managarm:
+        name: Test managarm
+        runs-on: ubuntu-20.04
+        steps:
+          - name: Install prerequisites
+            run: |
+                sudo apt-get install ninja-build
+                sudo apt-get install qemu-system-x86
+                sudo pip3 install setuptools
+                sudo pip3 install -U jsonschema
+                sudo pip3 install meson xbstrap
+          - name: Checkout bootstrap-managarm
+            uses: actions/checkout@v2
+            with:
+                repository: managarm/bootstrap-managarm
+                path: src/
+          - name: Checkout managarm
+            uses: actions/checkout@v2
+            with:
+                repository: managarm/managarm
+                path: src/managarm
+                fetch-depth: 0
+          - name: Checkout mlibc
+            uses: actions/checkout@v2
+            with:
+                path: src/mlibc
+                fetch-depth: 0
+          - name: Build container
+            run: docker build -t managarm-build --target base src/docker
+          - name: Prepare src/ and worker/
+            run: |
+                touch src/managarm/checkedout.xbstrap
+                touch src/mlibc/checkedout.xbstrap
+                mkdir worker/
+                mkdir worker/tools
+                echo '{"pkg_management": {"format": "xbps"}}' > worker/bootstrap-site.yml
+                cd worker/tools
+                for t in cross-binutils bootstrap-system-gcc; do
+                    curl -o $t.tar.gz https://ci.managarm.org/repos/tools/managarm/rolling/$t.tar.gz
+                    mkdir $t
+                    tar -C $t -xzf $t.tar.gz
+                done
+                find
+          - name: Compile mlibc
+            run: |
+                docker run --rm -t \
+                   --mount type=bind,source=$GITHUB_WORKSPACE,target=/builder \
+                   -w /builder/worker \
+                   managarm-build \
+                   bash -c 'xbstrap init ../src && xbstrap build mlibc'
+          - name: Prepare managarm image
+            run: |
+                curl -o image.xz https://ci.managarm.org/repos/files/managarm/rolling/image.xz
+                for t in update-image test-image; do
+                    curl -o $t.py https://raw.githubusercontent.com/Geertiebear/bootstrap-managarm/master/scripts/$t.py
+                    chmod +x $t.py
+                done
+                unxz image.xz
+                ./update-image.py -m loopback mount
+                sudo rsync -a worker/packages/mlibc/ mountpoint/
+                ./update-image.py -m loopback unmount
+          - name: Upload artifacts
+            uses: actions/upload-artifact@v2
+            with:
+                name: mlibc-managarm
+                path: worker/packages/mlibc
+          - name: Test managarm
+            run: ./test-image.py --log-stdout
+
+
+
     compile-sysdeps:
         strategy:
             matrix:
