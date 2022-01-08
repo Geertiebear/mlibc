@@ -377,9 +377,21 @@ int getlogin_r(char *, size_t) {
 
 static char *scan = NULL; /* Private scan pointer. */
 
-int getopt(int argc, char *const argv[], const char *optstring) {
+int getopt(int argc, char *const cargv[], const char *optstring) {
 	char c;
 	char *place;
+	char **argv = const_cast<char**>(cargv);
+
+	// The man page for getopt() states that
+	// if optstring[0] == '+' or the POSIXLY_CORRECT env var is set
+	// then option scanning is stopped at the first place a non-option
+	// is found. If this is not the case, then getopt() should keep
+	// scanning, and permute argv such that the nonoptions are
+	// moved to the back. This is in line with glibc behaviour, but
+	// musl doesn't seem to implement this.
+	bool posixly_correct = optstring[0] == '+';
+	if (getenv("POSIXLY_CORRECT"))
+		posixly_correct = true;
 
 	optarg = NULL;
 
@@ -387,8 +399,27 @@ int getopt(int argc, char *const argv[], const char *optstring) {
 		if (optind == 0)
 			optind++;
 
-		if (optind >= argc || argv[optind][0] != '-' || argv[optind][1] == '\0')
+		if (optind >= argc)
 			return EOF;
+
+		if (argv[optind][0] != '-' || argv[optind][1] == '\0') {
+			if (posixly_correct)
+				return EOF;
+
+			// Scan till we find next option argument.
+			// TODO(geert): preserve nonoption argument order.
+			for (int i = optind + 1; i < argc; i++) {
+				if (argv[i][0] == '-' && argv[i][1] != '\0') {
+					std::swap(argv[optind], argv[i]);
+					break;
+				}
+			}
+
+			// Check again if we have an option argument now.
+			if (argv[optind][0] != '-' || argv[optind][1] == '\0')
+				return EOF;
+		}
+
 		if (argv[optind][1] == '-' && argv[optind][2] == '\0') {
 			optind++;
 			return EOF;
