@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include <mlibc/debug.hpp>
+#include <mlibc/getopt.hpp>
 
 char *optarg;
 int optind = 1;
@@ -101,20 +102,7 @@ int getopt_long(int argc, char * const argv[], const char *optstring,
 			}
 		}else{
 			__ensure((strlen(argv[optind]) == 2) && "We do not support concatenated short options yet.");
-			unsigned int i = 1;
-			while(true) {
-				auto opt = strchr(optstring, arg[i]);
-				if(opt) {
-					__ensure((opt[1] != ':') && "We do not support option arguments.");
-					optind++;
-					return arg[i];
-				}else {
-					optopt = arg[1];
-					if(opterr)
-						fprintf(stderr, "%s is not a valid option.\n", arg);
-					return '?';
-				}
-			}
+			return mlibc::do_short_getopt(argc, const_cast<char **>(argv), optstring);
 		}
 	}
 	return -1;

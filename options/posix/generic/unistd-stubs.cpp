@@ -14,6 +14,7 @@
 #include <mlibc/debug.hpp>
 #include <mlibc/posix-sysdeps.hpp>
 #include <mlibc/thread.hpp>
+#include <mlibc/getopt.hpp>
 
 unsigned int alarm(unsigned int) {
 	__ensure(!"Not implemented");
@@ -373,85 +374,8 @@ int getlogin_r(char *, size_t) {
 	__builtin_unreachable();
 }
 
-// optarg and optind are provided to us by the GLIBC part of the mlibc.
-
-static char *scan = NULL; /* Private scan pointer. */
-
-int getopt(int argc, char *const cargv[], const char *optstring) {
-	char c;
-	char *place;
-	char **argv = const_cast<char**>(cargv);
-
-	// The man page for getopt() states that
-	// if optstring[0] == '+' or the POSIXLY_CORRECT env var is set
-	// then option scanning is stopped at the first place a non-option
-	// is found. If this is not the case, then getopt() should keep
-	// scanning, and permute argv such that the nonoptions are
-	// moved to the back. This is in line with glibc behaviour, but
-	// musl doesn't seem to implement this.
-	bool posixly_correct = optstring[0] == '+';
-	if (getenv("POSIXLY_CORRECT"))
-		posixly_correct = true;
-
-	optarg = NULL;
-
-	if (!scan || *scan == '\0') {
-		if (optind == 0)
-			optind++;
-
-		if (optind >= argc)
-			return EOF;
-
-		if (argv[optind][0] != '-' || argv[optind][1] == '\0') {
-			if (posixly_correct)
-				return EOF;
-
-			// Scan till we find next option argument.
-			// TODO(geert): preserve nonoption argument order.
-			for (int i = optind + 1; i < argc; i++) {
-				if (argv[i][0] == '-' && argv[i][1] != '\0') {
-					std::swap(argv[optind], argv[i]);
-					break;
-				}
-			}
-
-			// Check again if we have an option argument now.
-			if (argv[optind][0] != '-' || argv[optind][1] == '\0')
-				return EOF;
-		}
-
-		if (argv[optind][1] == '-' && argv[optind][2] == '\0') {
-			optind++;
-			return EOF;
-		}
-
-		scan = argv[optind]+1;
-		optind++;
-	}
-
-	c = *scan++;
-	place = strchr(optstring, c);
-
-	if (!place || c == ':') {
-		fprintf(stderr, "%s: unknown option -%c\n", argv[0], c);
-		return '?';
-	}
-
-	place++;
-	if (*place == ':') {
-		if (*scan != '\0') {
-			optarg = scan;
-			scan = NULL;
-		} else if( optind < argc ) {
-			optarg = argv[optind];
-			optind++;
-		} else {
-			fprintf(stderr, "%s: option requires argument -%c\n", argv[0], c);
-			return ':';
-		}
-	}
-
-	return c;
+int getopt(int argc, char *const argv[], const char *optstring) {
+	return mlibc::do_short_getopt(argc, const_cast<char **>(argv), optstring);
 }
 
 pid_t getpgid(pid_t pid) {
